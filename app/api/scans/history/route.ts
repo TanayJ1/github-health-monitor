@@ -1,24 +1,11 @@
 import { db } from "@/lib/db";
-import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
+import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-
     const repositoryId = searchParams.get("repositoryId");
-
-    const user = await getCurrentUser();
-
-if (!user) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: "Unauthorized",
-    },
-    { status: 401 }
-  );
-}
 
     if (!repositoryId) {
       return NextResponse.json(
@@ -30,22 +17,36 @@ if (!user) {
       );
     }
 
-    const repository = await db.repository.findFirst({
-  where: {
-    id: repositoryId,
-    ownerId: user.id,
-  },
-});
+    // Check logged-in user
+    const user = await getCurrentUser();
 
-if (!repository) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: "Repository not found",
-    },
-    { status: 404 }
-  );
-}
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized",
+        },
+        { status: 401 }
+      );
+    }
+
+    // Make sure this repository belongs to the logged-in user
+    const repository = await db.repository.findFirst({
+      where: {
+        id: repositoryId,
+        ownerId: user.id,
+      },
+    });
+
+    if (!repository) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Repository not found",
+        },
+        { status: 404 }
+      );
+    }
 
     const scans = await db.scan.findMany({
       where: {
