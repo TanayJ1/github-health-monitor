@@ -1,51 +1,113 @@
 import { Finding } from "@/types/finding";
-import { RepositoryFile } from "@/analyzers/repositoryStructure";
+import { DependabotAlert } from "@/services/githubDependabot";
+
+function mapSeverity(
+  severity: string
+): Finding["severity"] {
+  switch (severity.toLowerCase()) {
+    case "critical":
+      return "CRITICAL";
+
+    case "high":
+      return "HIGH";
+
+    case "medium":
+      return "MEDIUM";
+
+    case "low":
+      return "LOW";
+
+    default:
+      return "INFO";
+  }
+}
 
 export function analyzeDependencies(
-  files: RepositoryFile[]
+  files: { path: string }[],
+  alerts: DependabotAlert[]
 ): Finding[] {
   const findings: Finding[] = [];
 
-  const paths = files.map((file) => file.path.toLowerCase());
+  /*
+   * Existing dependency detection
+   */
 
-  const dependencyFiles = [
-    "package.json",
-    "requirements.txt",
-    "pyproject.toml",
-    "pom.xml",
-    "go.mod",
-    "cargo.toml",
-  ];
+  const dependencyFiles = files.filter((file) => {
+    const path = file.path.toLowerCase();
 
-  const foundDependencyFiles = dependencyFiles.filter((file) =>
-    paths.includes(file)
-  );
+    return (
+      path.endsWith("package.json") ||
+      path.endsWith("requirements.txt") ||
+      path.endsWith("pyproject.toml") ||
+      path.endsWith("pom.xml") ||
+      path.endsWith("go.mod") ||
+      path.endsWith("cargo.toml")
+    );
+  });
 
-  if (foundDependencyFiles.length === 0) {
+  if (dependencyFiles.length === 0) {
     findings.push({
       category: "DEPENDENCY",
       severity: "INFO",
-      title: "No supported dependency manifest detected",
+      title: "No dependency manifest detected",
       description:
-        "The repository does not contain a recognized dependency manifest.",
-      rule: "DEPENDENCY_MANIFEST_MISSING",
+        "No supported dependency manifest was detected in the repository.",
       recommendation:
-        "Add a standard dependency manifest for the project's programming ecosystem.",
+        "Add a dependency manifest so dependencies can be analyzed.",
     });
-
-    return findings;
+  } else {
+    findings.push({
+      category: "DEPENDENCY",
+      severity: "INFO",
+      title: "Dependency files detected",
+      description: `${dependencyFiles.length} dependency manifest file(s) detected.`,
+      recommendation:
+        "Keep dependency versions updated and regularly review security advisories.",
+    });
   }
 
-  if (foundDependencyFiles.length > 1) {
+  /*
+   * Real vulnerability findings
+   */
+
+  for (const alert of alerts) {
+    const vulnerability = alert.security_vulnerability;
+    const advisory = alert.security_advisory;
+
+    if (!vulnerability) {
+      continue;
+    }
+
+    const packageName = vulnerability.package.name;
+    const severity = mapSeverity(vulnerability.severity);
+
+    const cve = advisory?.cve_id;
+    const ghsa = advisory?.ghsa_id;
+
+    const identifiers = [cve, ghsa]
+      .filter(Boolean)
+      .join(" / ");
+
+    const patchedVersion =
+      vulnerability.first_patched_version?.identifier;
+
     findings.push({
       category: "DEPENDENCY",
-      severity: "INFO",
-      title: "Multiple dependency ecosystems detected",
+      severity,
+
+      title: `Vulnerable dependency: ${packageName}`,
+
       description:
-        `The repository contains multiple dependency manifests: ${foundDependencyFiles.join(", ")}.`,
-      rule: "MULTIPLE_DEPENDENCY_MANIFESTS",
-      recommendation:
-        "Ensure dependencies for each ecosystem are intentionally maintained and consistently updated.",
+        advisory?.summary ||
+        `${packageName} has a known security vulnerability.`,
+
+      file: alert.dependency.manifest_path,
+
+      rule: identifiers || "DEPENDENCY_VULNERABILITY",
+
+      recommendation: patchedVersion
+        ? `Update ${packageName} to version ${patchedVersion} or later.`
+        : `Update ${packageName} to a secure version and review the associated security advisory.`,
     });
   }
 

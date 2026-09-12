@@ -5,7 +5,7 @@ import { getRepositoryFiles } from "@/services/githubRepository";
 import { getRecentCommits } from "@/services/githubActivity";
 import { getPullRequests } from "@/services/githubPullRequests";
 import { getIssues } from "@/services/githubIssues";
-
+import { getDependabotAlerts } from "@/services/githubDependabot";
 import { analyzeRepositoryStructure } from "@/analyzers/repositoryStructure";
 import { analyzeDocumentation } from "@/analyzers/documentation";
 import {
@@ -271,8 +271,16 @@ export async function POST(request: Request) {
     }
 
 
-    const dependencyFindings =
-      analyzeDependencies(files);
+   const dependabotAlerts = await getDependabotAlerts(
+  owner,
+  repo,
+  user.githubAccessToken
+);
+
+const dependencyFindings = analyzeDependencies(
+  files,
+  dependabotAlerts
+);
 
     const testingFindings =
       analyzeTesting(files);
