@@ -57,19 +57,25 @@ export async function getDependabotAlerts(
     return [];
   }
 
-  if (!response.ok) {
-    const text = await response.text();
+if (!response.ok) {
+  const text = await response.text();
 
-    console.error(
-      "Failed to fetch Dependabot alerts:",
-      response.status,
-      text
-    );
+  console.error(
+    "Failed to fetch Dependabot alerts:",
+    response.status,
+    text
+  );
 
-    throw new Error(
-      `Dependabot API failed with status ${response.status}`
-    );
+  // Dependabot alerts may be disabled for the repository.
+  // This should not cause the entire repository scan to fail.
+  if (response.status === 403) {
+    return [];
   }
+
+  throw new Error(
+    `Dependabot API failed with status ${response.status}`
+  );
+}
 
   return response.json();
 }
