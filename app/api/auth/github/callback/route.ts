@@ -110,18 +110,10 @@ export async function GET(request: NextRequest) {
     // IMPORTANT:
     // Never send the GitHub access token to the browser.
 
-    return NextResponse.json({
-      success: true,
-      message: "GitHub authentication successful",
+  return NextResponse.redirect(
+  new URL("/dashboard", request.url)
+);
 
-      user: {
-        id: user.id,
-        githubId: user.githubId,
-        username: user.username,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-      },
-    });
   } catch (error) {
     console.error("GitHub OAuth callback error:", error);
 
