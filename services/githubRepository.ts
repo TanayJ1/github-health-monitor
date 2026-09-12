@@ -15,6 +15,35 @@ interface GitHubTreeResponse {
   truncated: boolean;
 }
 
+export async function getGitHubFileContent(
+  owner: string,
+  repo: string,
+  path: string,
+  token: string
+): Promise<string | null> {
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github.raw+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    console.error(
+      `Failed to fetch GitHub file ${path}:`,
+      response.status
+    );
+
+    return null;
+  }
+
+  return await response.text();
+}
+
 export async function getRepositoryFiles(
   owner: string,
   repo: string,

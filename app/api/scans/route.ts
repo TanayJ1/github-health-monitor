@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
-
+import { Finding } from "@/types/finding";
 import { getRepositoryFiles } from "@/services/githubRepository";
 import { getRecentCommits } from "@/services/githubActivity";
 import { getPullRequests } from "@/services/githubPullRequests";
@@ -8,7 +8,10 @@ import { getIssues } from "@/services/githubIssues";
 
 import { analyzeRepositoryStructure } from "@/analyzers/repositoryStructure";
 import { analyzeDocumentation } from "@/analyzers/documentation";
-import { analyzeSecurity } from "@/analyzers/security";
+import {
+  analyzeSecurity,
+  detectSecretsInContent,
+} from "@/analyzers/security";
 import { analyzeDependencies } from "@/analyzers/dependencies";
 import { analyzeTesting } from "@/analyzers/testing";
 import { analyzeCICD } from "@/analyzers/cicd";
@@ -23,6 +26,7 @@ import {
 } from "@/lib/healthScore";
 
 import { NextResponse } from "next/server";
+import { getGitHubFileContent } from "@/services/githubRepository";
 
 export async function POST(request: Request) {
   let scanId: string | null = null;
@@ -204,6 +208,69 @@ export async function POST(request: Request) {
     const securityFindings =
       analyzeSecurity(files);
 
+        // --------------------------------------------------
+    // 9.1 Scan file contents for exposed secrets
+    // --------------------------------------------------
+
+   const secretFindings: Finding[] = [];
+
+    const scannableFiles = files
+      .filter((file) => {
+        const path = file.path.toLowerCase();
+
+        return [
+          ".js",
+          ".jsx",
+          ".ts",
+          ".tsx",
+          ".py",
+          ".java",
+          ".go",
+          ".rs",
+          ".php",
+          ".rb",
+          ".cs",
+          ".cpp",
+          ".c",
+          ".json",
+          ".yml",
+          ".yaml",
+          ".xml",
+          ".properties",
+          ".env",
+          ".ini",
+          ".cfg",
+          ".conf",
+        ].some((extension) => path.endsWith(extension));
+      })
+      .slice(0, 100);
+
+    for (const file of scannableFiles) {
+      try {
+        const content = await getGitHubFileContent(
+          owner,
+          repo,
+          file.path,
+          user.githubAccessToken
+        );
+
+        if (!content) continue;
+
+        const findings = detectSecretsInContent(
+          file.path,
+          content
+        );
+
+        secretFindings.push(...findings);
+      } catch (error) {
+        console.error(
+          `Secret scan failed for ${file.path}:`,
+          error
+        );
+      }
+    }
+
+
     const dependencyFindings =
       analyzeDependencies(files);
 
@@ -240,6 +307,7 @@ export async function POST(request: Request) {
       ...pullRequestFindings,
       ...issueFindings,
       ...codeQualityFindings,
+      ...secretFindings,
     ];
 
     // --------------------------------------------------
